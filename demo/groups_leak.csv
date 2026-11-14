@@ -1,0 +1,13 @@
+样本号,组别
+S-1001,train
+D-2001,train
+D-2002,val
+E-3001,val
+S-1002,val
+D-2003,val
+E-3002,val
+S-1003,test
+D-2004,test
+S-1004,test
+D-2005,test
+E-3003,test

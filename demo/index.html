@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>病理样本跨组泄漏核查 · 交互控制台</title>
+<style>
+  :root {
+    --bg: #0f172a; --panel: #1e293b; --panel2: #273449;
+    --text: #e2e8f0; --muted: #94a3b8; --line: #334155;
+    --ok: #22c55e; --warn: #f59e0b; --bad: #ef4444; --info: #38bdf8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.55;
+  }
+  header { padding: 22px 28px 14px; border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0 0 6px; font-size: 21px; }
+  header p { margin: 0; color: var(--muted); font-size: 13px; }
+  .wrap { display: grid; grid-template-columns: 380px 1fr; gap: 18px; padding: 18px 28px 40px; }
+  @media (max-width: 980px) { .wrap { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+  .card h2 { margin: 0 0 12px; font-size: 15px; color: var(--info); }
+  .drop {
+    border: 1.5px dashed var(--line); border-radius: 10px; padding: 18px;
+    text-align: center; color: var(--muted); cursor: pointer; transition: .15s;
+    font-size: 13px; margin-bottom: 10px;
+  }
+  .drop:hover, .drop.hot { border-color: var(--info); color: var(--text); background: var(--panel2); }
+  .drop input { display: none; }
+  .fname { font-size: 12px; color: var(--muted); word-break: break-all; min-height: 16px; }
+  button {
+    width: 100%; margin-top: 8px; padding: 10px; border: 0; border-radius: 8px;
+    background: var(--info); color: #08233a; font-weight: 700; cursor: pointer; font-size: 14px;
+  }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.ghost { background: var(--panel2); color: var(--text); border: 1px solid var(--line); }
+  button.dl { background: var(--ok); color: #052e16; }
+  button.dl:disabled { background: var(--panel2); color: var(--muted); }
+  .kv { display: grid; grid-template-columns: 118px 1fr; gap: 4px 10px; font-size: 13px; }
+  .kv dt { color: var(--muted); } .kv dd { margin: 0; }
+  .bar { height: 10px; background: var(--panel2); border-radius: 6px; overflow: hidden; margin: 10px 0 6px; }
+  .bar > i { display: block; height: 100%; width: 0; background: var(--info); transition: width .3s; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+  .pill.queued, .pill.running { background: #1d4ed8; color: #dbeafe; }
+  .pill.passed { background: #14532d; color: #bbf7d0; }
+  .pill.failed { background: #7f1d1d; color: #fecaca; }
+  .pill.superseded { background: #422006; color: #fde68a; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 8px; }
+  th, td { border: 1px solid var(--line); padding: 7px 9px; text-align: left; vertical-align: top; }
+  th { background: var(--panel2); color: var(--muted); font-weight: 600; }
+  .path { font-family: ui-monospace, monospace; color: #7dd3fc; word-break: break-all; }
+  .muted { color: var(--muted); font-size: 12.5px; }
+  .log {
+    background: #0b1220; border: 1px solid var(--line); border-radius: 8px; padding: 10px;
+    font-family: ui-monospace, monospace; font-size: 12px; max-height: 190px; overflow: auto;
+    white-space: pre-wrap; word-break: break-all;
+  }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }
+  @media (max-width: 980px) { .row2 { grid-template-columns: 1fr; } }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  code { background: var(--panel2); padding: 1px 6px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>病理样本跨组泄漏核查 · 交互控制台</h1>
+  <p>上传 LIMS 衍生关系（只增、重复合一）与分组（整份替换）→ 后台无向连通性核查 → 仅当前版本核查通过后可下载冻结分组 CSV。
+    接口文档见 <a href="/docs" style="color:var(--info)">/docs (Swagger)</a>。</p>
+</header>
+
+<div class="wrap">
+  <div>
+    <div class="card" style="margin-bottom:16px">
+      <h2>① 上传衍生关系 CSV</h2>
+      <label class="drop" id="dropRel">
+        <input type="file" id="fileRel" accept=".csv" />
+        点击选择 / 拖拽文件到此处<br/>
+        <span class="muted">表头：原样本号, 衍生样本号</span>
+        <div class="fname" id="nameRel"></div>
+      </label>
+      <button id="btnRel">提交关系（整批事务）</button>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <h2>② 上传分组 CSV（整份替换）</h2>
+      <label class="drop" id="dropGrp">
+        <input type="file" id="fileGrp" accept=".csv" />
+        点击选择 / 拖拽文件到此处<br/>
+        <span class="muted">表头：样本号, 组别（同一样本仅一组）</span>
+        <div class="fname" id="nameGrp"></div>
+      </label>
+      <button id="btnGrp">提交分组（整批事务）</button>
+    </div>
+    <div class="card">
+      <h2>③ 放行下载</h2>
+      <p class="muted" id="dlHint">仅当前数据版本核查通过、且之后无新提交时可下载。</p>
+      <button class="dl" id="btnDl" disabled>下载已通过版本分组 CSV</button>
+      <button class="ghost" id="btnRefresh">手动刷新状态</button>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>当前状态（每 1.5s 自动轮询）</h2>
+      <dl class="kv" id="kv"></dl>
+      <div class="bar"><i id="bar"></i></div>
+      <span class="muted" id="barText">—</span>
+    </div>
+    <div class="row2">
+      <div class="card">
+        <h2>跨组冲突明细与实际连接路径</h2>
+        <div id="conflicts"><span class="muted">暂无数据</span></div>
+      </div>
+      <div class="card">
+        <h2>操作日志</h2>
+        <div class="log" id="log"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+function log(msg) {
+  const t = new Date().toLocaleTimeString();
+  $("log").textContent = `[${t}] ${msg}\n` + $("log").textContent;
+}
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.detail || data.error || `HTTP ${r.status}`);
+  return data;
+}
+function bindDrop(dropId, inputId, nameId) {
+  const drop = $(dropId), input = $(inputId);
+  drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("hot"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("hot"));
+  drop.addEventListener("drop", e => {
+    e.preventDefault(); drop.classList.remove("hot");
+    input.files = e.dataTransfer.files;
+    $(nameId).textContent = input.files[0]?.name || "";
+  });
+  input.addEventListener("change", () => { $(nameId).textContent = input.files[0]?.name || ""; });
+}
+bindDrop("dropRel", "fileRel", "nameRel");
+bindDrop("dropGrp", "fileGrp", "nameGrp");
+
+async function upload(url, inputId, label) {
+  const f = $(inputId).files[0];
+  if (!f) { alert("请先选择 CSV 文件"); return; }
+  const fd = new FormData(); fd.append("file", f);
+  try {
+    const res = await api(url, { method: "POST", body: fd });
+    log(`${label}提交成功 → 数据版本 v${res.data_version}，新增 ${res.inserted_rows} 行，已排队核查 run#${res.verification.run_id}`);
+    await refresh();
+  } catch (e) { log("✖ " + e.message); alert(e.message); }
+}
+$("btnRel").onclick = () => upload("/api/upload/relations", "fileRel", "关系");
+$("btnGrp").onclick = () => upload("/api/upload/groups", "fileGrp", "分组");
+$("btnRefresh").onclick = refresh;
+$("btnDl").onclick = () => { window.location.href = "/api/release/groups.csv"; log("请求下载放行快照…"); };
+
+function esc(s) { return String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+
+async function refresh() {
+  try {
+    const st = await api("/api/status");
+    const run = st.latest_run;
+    $("kv").innerHTML = `
+      <dt>当前数据版本</dt><dd>v${st.current_data_version}</dd>
+      <dt>有效放行版本</dt><dd>${st.accepted_version != null ? "v" + st.accepted_version : "无（旧放行已撤销）"}</dd>
+      <dt>关系边数</dt><dd>${st.relation_edges}</dd>
+      <dt>在组样本数</dt><dd>${st.grouped_samples}</dd>
+      <dt>最新核查</dt><dd>${run ? `run#${run.run_id}（绑定 v${run.data_version}） <span class="pill ${run.status}">${run.status}</span>` : "无"}</dd>
+      <dt>连通分量 / 冲突</dt><dd>${run ? (run.components_total ?? "—") + " / " + run.conflicts_total : "—"}</dd>`;
+    const pct = run ? run.progress_pct : 0;
+    $("bar").style.width = pct + "%";
+    $("barText").textContent = run
+      ? `${run.status} · ${run.vertices_processed}/${run.vertices_total ?? "?"} 顶点 · ${pct}% · 尝试 ${run.attempts} 次`
+      : "—";
+    $("btnDl").disabled = !st.download_available;
+    $("dlHint").textContent = st.download_available
+      ? `可下载受理时冻结的 v${st.download_version} 完整已通过版本。`
+      : "仅当前核查通过才可下载；未完成不报安全。";
+
+    if (run && run.status === "failed" && run.conflicts && run.conflicts.length) {
+      $("conflicts").innerHTML = `<table>
+        <tr><th>样本 A（组）</th><th>样本 B（组）</th><th>分量大小</th><th>实际连接路径</th></tr>` +
+        run.conflicts.map(c => `<tr>
+          <td>${esc(c.sample_a)}<br/><b>${esc(c.group_a)}</b></td>
+          <td>${esc(c.sample_b)}<br/><b>${esc(c.group_b)}</b></td>
+          <td>${c.component_size}</td>
+          <td class="path">${c.path.map(esc).join(" → ")}</td></tr>`).join("") +
+        (run.conflicts_total > run.conflicts.length
+          ? `<tr><td colspan="4" class="muted">仅展示前 ${run.conflicts.length} 条，共 ${run.conflicts_total} 条冲突</td></tr>` : "") +
+        `</table>`;
+    } else if (run && run.status === "passed") {
+      $("conflicts").innerHTML = `<span style="color:var(--ok)">✓ 版本 v${run.data_version} 全部连通分量均未跨组，核查通过</span>`;
+    } else {
+      $("conflicts").innerHTML = `<span class="muted">${run ? "核查进行中，完成后展示结果" : "暂无数据"}</span>`;
+    }
+  } catch (e) { log("✖ 状态刷新失败: " + e.message); }
+}
+refresh();
+setInterval(refresh, 1500);
+</script>
+</body>
+</html>

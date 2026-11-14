@@ -1,0 +1,41 @@
+# 病理样本跨组泄漏核查系统 —— 可实际启动的编排环境
+#
+#   docker compose up --build
+#   打开 http://localhost:8080/        交互式控制台
+#   打开 http://localhost:8080/docs    Swagger API 文档
+#
+# 两个 API 进程（api1/api2）经 nginx 轮询共享同一套 SQLite 文件，
+# 用于验证跨进程的版本绑定、抢占式核查与放行一致性。
+
+services:
+  api1:
+    build: .
+    environment:
+      LEAKCHECK_DATA_DIR: /data
+      LEAKCHECK_POLL_INTERVAL: "0.5"
+    volumes:
+      - leakcheck-data:/data
+    restart: unless-stopped
+
+  api2:
+    build: .
+    environment:
+      LEAKCHECK_DATA_DIR: /data
+      LEAKCHECK_POLL_INTERVAL: "0.5"
+    volumes:
+      - leakcheck-data:/data
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      - api1
+      - api2
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    restart: unless-stopped
+
+volumes:
+  leakcheck-data:
